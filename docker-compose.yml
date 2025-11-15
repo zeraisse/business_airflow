@@ -18,7 +18,8 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
-    PYTHONPATH: /opt/airflow        # pour que "scraper" soit importable
+    PYTHONPATH: /opt/airflow       
+    AIRFLOW__PROVIDERS_APACHE_HDFS__DEFAULT_WEBHDFS_URL: 'http://namenode:9870'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
@@ -177,10 +178,10 @@ services:
         /entrypoint airflow users create \
           --username "$${_AIRFLOW_WWW_USER_USERNAME}" \
           --password "$${_AIRFLOW_WWW_USER_PASSWORD}" \
-          --firstname Faycal \
+          --firstname None \
           --lastname Admin \
           --role Admin \
-          --email faycal@example.com || echo "User already exists, skipping."
+          --email none@example.com || echo "User already exists, skipping."
         echo "Airflow init finished."
     environment:
       <<: *airflow-common-env
@@ -231,5 +232,37 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+# HDFS
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=business-hdfs-cluster
+      - HDFS_CONF_dfs_replication=1
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    ports:
+      - "9870:9870"  # UI Web HDFS
+      - "9000:9000"  # Port RPC HDFS
+    volumes:
+      - namenode:/hadoop/dfs/name
+    restart: always
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    environment:
+      - CLUSTER_NAME=business-hdfs-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    depends_on:
+      - namenode 
+    ports:
+      - "9864:9864"
+    volumes:
+      - datanode:/hadoop/dfs/data
+    restart: always
+
 volumes:
   postgres-db-volume:
+  namenode:
+  datanode:
+
