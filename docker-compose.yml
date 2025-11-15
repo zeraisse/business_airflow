@@ -273,6 +273,28 @@ services:
       - mongo-data:/data/db
     restart: always
 
+
+  backend:
+    build: ./backend
+    container_name: backend
+    ports:
+      - "5001:5000"  
+    depends_on:
+      - mongo       
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    stdin_open: true
+    tty: true
+    depends_on:
+      - backend    
+    restart: always
+
+
 volumes:
   postgres-db-volume:
   namenode:
