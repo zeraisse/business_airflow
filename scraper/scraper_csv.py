@@ -2,12 +2,16 @@ import os
 import logging
 import requests
 import pandas as pd
+from hdfs import InsecureClient
+
 
 # URL en FR pour faciliter le parsing plus tard
 BASE_URL = (
     "https://kbopub.economie.fgov.be/kbopub/"
     "toonondernemingps.html?lang=fr&ondernemingsnummer="
 )
+HDFS_BASE_DIR = "/kbo/html"
+CLIENT_HDFS = InsecureClient('http://namenode:9870', user='airflow')
 
 # --- CONFIG LOGGING ---
 logging.basicConfig(
@@ -56,15 +60,15 @@ def download_html(number: str) -> None:
     - un script Python
     - une tâche Airflow dynamique (une task par entreprise)
     """
-    output_dir = os.path.join("data", "html")
-    os.makedirs(output_dir, exist_ok=True)
+    # output_dir = os.path.join("data", "html")
+    # os.makedirs(output_dir, exist_ok=True)
 
-    filepath = os.path.join(output_dir, f"{number}.html")
+    # filepath = os.path.join(output_dir, f"{number}.html")
 
     # ✅ Ne pas retélécharger si on l'a déjà
-    if os.path.exists(filepath):
-        logger.info(f"[SKIP] HTML déjà présent pour {number}")
-        return
+    # if os.path.exists(filepath):
+    #     logger.info(f"[SKIP] HTML déjà présent pour {number}")
+    #     return
 
     url = build_kbo_url(number)
     logger.info(f"Téléchargement de : {url}")
@@ -79,10 +83,22 @@ def download_html(number: str) -> None:
         logger.error(f"Erreur HTTP {response.status_code} pour {number} (URL: {url})")
         return
 
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(response.text)
+    # with open(filepath, "w", encoding="utf-8") as f:
+    #     f.write(response.text)
 
-    logger.info(f"Fichier sauvegardé : {filepath}")
+    # logger.info(f"Fichier sauvegardé : {filepath}")
+    hdfs_filepath = f"{HDFS_BASE_DIR}/{number}.html"
+
+    try:
+        with CLIENT_HDFS.write(hdfs_filepath, encoding="utf-8", overwrite=True) as writer:
+            writer.write(response.text)
+        
+        print(f"✅ Fichier sauvegardé dans HDFS : {hdfs_filepath}")
+    except Exception as e:
+        print(f"❌ Erreur lors de l'écriture HDFS pour {hdfs_filepath} : {e}")
+        # Vous pouvez 'raise e' ici si vous voulez que la tâche Airflow
+        # échoue en cas d'erreur d'écriture HDFS.
+
 
 
 def list_enterprise_numbers_from_csv(
