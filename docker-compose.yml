@@ -20,6 +20,7 @@ x-airflow-common:
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
     PYTHONPATH: /opt/airflow       
     AIRFLOW__PROVIDERS_APACHE_HDFS__DEFAULT_WEBHDFS_URL: 'http://namenode:9870'
+    AIRFLOW__CONN__MONGO_DEFAULT: 'mongodb://mongo_user:mongo_pass@mongo:27017/kbo_data'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
@@ -260,9 +261,21 @@ services:
     volumes:
       - datanode:/hadoop/dfs/data
     restart: always
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo_user
+      MONGO_INITDB_ROOT_PASSWORD: mongo_pass
+    volumes:
+      - mongo-data:/data/db
+    restart: always
 
 volumes:
   postgres-db-volume:
   namenode:
   datanode:
+  mongo-data:
 
