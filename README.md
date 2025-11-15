@@ -30,4 +30,9 @@ docker compose exec {IMAGENAME} mongosh -u {USER} -p {PASSWORD} --authentication
     db.{COLLECTION_NAME}.findOne();
     db.{COLLECTION_NAME}.countDocuments();
 ```
+# Accès visualisation des données traité
+```text
+UI :  http://localhost:3000
+API : http://localhost:5001/api/companies
+```
 ❤️
