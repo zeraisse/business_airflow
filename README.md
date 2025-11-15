@@ -7,5 +7,7 @@ docker compose up -d
 docker compose exec namenode bash
  hdfs dfs -mkdir -p /kbo/html
  hdfs dfs -chown airflow /kbo/html
+ hdfs dfs -mkdir -p /kbo/parsed_results
+ hdfs dfs -chown airflow /kbo/parsed_results
 ```
 ❤️
