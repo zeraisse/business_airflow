@@ -1,7 +1,7 @@
 import os
 import requests
 
-BASE_URL = "https://kbopub.economie.fgov.be/kbopub/toonondernemingps.html?ondernemingsnummer="
+BASE_URL = "https://kbopub.economie.fgov.be/kbopub/toonondernemingps.html?lang=fr&ondernemingsnummer="
 
 def build_kbo_url(number: str) -> str:
     """
