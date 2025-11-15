@@ -9,16 +9,21 @@ def build_kbo_url(number: str) -> str:
     """
     return f"{BASE_URL}{number}"
 
-def download_html(number: str) -> None:
+def download_html(number: str, proxy: str | None = None) -> None:
     """
     Télécharge la page HTML pour un numéro d'entreprise
     et la sauvegarde dans data/html/<numero>.html
+    Utilise un proxy si fourni.
     """
     url = build_kbo_url(number)
-    print(f"➡️  Téléchargement de : {url}")
+    proxy_info = f"via proxy {proxy}" if proxy else "sans proxy"
+    print(f"➡️  Téléchargement de : {url} ({proxy_info})")
+
+    proxies = {"http": proxy, "https": proxy} if proxy else None
 
     try:
-        response = requests.get(url, timeout=10)
+        # Utilisation du proxy dans la requête
+        response = requests.get(url, timeout=15, proxies=proxies)
     except Exception as e:
         print(f"❌ Erreur de requête pour {number} : {e}")
         return
