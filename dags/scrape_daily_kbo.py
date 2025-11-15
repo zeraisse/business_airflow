@@ -7,7 +7,7 @@ from airflow.operators.python import PythonOperator
 from scraper.scraper_csv import run_scraping_from_csv
 
 default_args = {
-    "owner": "faycal",
+    "owner": "None",
     "depends_on_past": False,
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
