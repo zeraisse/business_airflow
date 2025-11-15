@@ -56,12 +56,10 @@ def kbo_parsing_hdfs_pipeline():
         Prend UN nom de fichier, le lit depuis HDFS, le parse
         et retourne un dictionnaire de données.
         """
-        # Construit le chemin HDFS complet
         hdfs_file_path = f"{HDFS_BASE_DIR}/{filename}"
         print(f"Parsing HDFS file: {hdfs_file_path}")
         
         try:
-            # --- MODIFICATION CLÉ : LECTURE DEPUIS HDFS ---
             with CLIENT_HDFS.read(hdfs_file_path, encoding='utf-8') as reader:
                 content = reader.read()
             
@@ -84,13 +82,10 @@ def kbo_parsing_hdfs_pipeline():
         try:
             json_data = json.dumps(real_results_list, indent=4, ensure_ascii=False)
             
-            # --- LA CORRECTION EST ICI ---
-            # Pas besoin de "with" si vous fournissez l'argument "data"
             CLIENT_HDFS.write(HDFS_OUTPUT_FILE, 
                               data=json_data, 
                               encoding='utf-8', 
                               overwrite=True)
-            # --- FIN DE LA CORRECTION ---
             
             print(f"Sauvegarde HDFS terminée.")
             
@@ -111,6 +106,4 @@ def kbo_parsing_hdfs_pipeline():
     # 3. REDUCE : Attendre que tout soit fini et sauvegarder
     save_results_to_hdfs(parsed_data)
 
-
-# Instanciation du DAG
 kbo_parsing_hdfs_pipeline()
