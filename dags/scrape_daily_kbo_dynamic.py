@@ -4,17 +4,22 @@ import os
 from datetime import datetime, timedelta
 
 from airflow.decorators import dag, task
+from airflow.models.variable import Variable
+from airflow.exceptions import AirflowFailException
 
-# Code métier du scraper
+from hdfs import InsecureClient
+HDFS_BASE_DIR = "/kbo/html"
+CLIENT_HDFS = InsecureClient('http://namenode:9870', user='airflow')
+
 from scraper.scraper_csv import (
     list_enterprise_numbers_from_csv,
-    download_html,
 )
+from scraper.scraper_basic import download_html
 
-# Dans le conteneur, ./data est monté sur /opt/airflow/data
-CSV_PATH = "/opt/airflow/data/enterprise.csv"
 
-# 👉 On veut traiter jusqu'à 20 entreprises par run
+AIRFLOW_DATA_PATH = os.environ.get("AIRFLOW_HOME", "/opt/airflow")
+CSV_PATH = os.path.join(AIRFLOW_DATA_PATH, "data", "enterprise.csv")
+
 MAX_COMPANIES_PER_RUN = 20
 
 default_args = {
@@ -29,72 +34,116 @@ default_args = {
     dag_id="scrape_daily_kbo_dynamic",
     description="Scraping KBO avec tâches dynamiques (plusieurs entreprises par run, 1 entreprise = 1 task)",
     start_date=datetime(2025, 11, 13),
-    # 👉 on exécute le DAG toutes les minutes
     schedule="* * * * *",
     catchup=False,
     default_args=default_args,
     tags=["kbo", "scraping", "dynamic"],
-    max_active_runs=1,  # 1 run à la fois, mais plusieurs tasks en parallèle dans ce run
+    max_active_runs=1,
 )
 def scrape_daily_kbo_dynamic_dag():
     """
-    DAG dynamique :
-    1) lit enterprise.csv et trouve les entreprises PAS ENCORE scrapées
-    2) sélectionne jusqu'à 20 entreprises
-    3) crée une task de scraping par entreprise (dynamic task mapping)
+    DAG dynamique pour scraper les données KBO.
+    1. Récupère la liste des proxies valides.
+    2. Lit `enterprise.csv` et compare avec HDFS pour trouver les entreprises à scraper.
+    3. Crée une tâche de scraping par entreprise, en lui assignant un proxy.
     """
+
+    @task(task_id="get_available_proxies")
+    def _get_available_proxies() -> list[str]:
+        """
+        Récupère la liste des proxies depuis la Variable Airflow `proxy_list`.
+        """
+        proxies_str = Variable.get("proxy_list", default_var=None)
+        
+        if not proxies_str:
+            raise AirflowFailException("La variable 'proxy_list' est vide ou n'existe pas. Exécutez d'abord 'proxy_manager_dag'.")
+
+        all_proxies = [p.strip() for p in proxies_str.split(',')]
+
+        if not all_proxies:
+            raise AirflowFailException("Aucun proxy disponible, arrêt du DAG.")
+
+        print(f"{len(all_proxies)} proxies valides récupérés.")
+        return all_proxies
 
     @task(task_id="read_next_enterprises")
     def _read_next_enterprises(
         max_companies: int = MAX_COMPANIES_PER_RUN,
     ) -> list[str]:
         """
-        Lit le CSV, regarde quels HTML existent déjà,
-        et renvoie une petite liste (max 20) d'entreprises à scraper.
+        Lit le CSV, regarde quels HTML existent déjà sur HDFS,
+        et renvoie une liste d'entreprises à scraper.
         """
-        # Liste complète des numéros
-        all_numbers = list_enterprise_numbers_from_csv(
+        # 1. Liste complète des numéros du CSV
+        #    On utilise un set() pour une comparaison rapide
+        all_numbers_in_csv = set(list_enterprise_numbers_from_csv(
             csv_path=CSV_PATH,
             max_companies=None,  # on lit tout, on filtrera après
-        )
+        ))
 
-        html_dir = os.path.join("data", "html")
+        # 2. Liste des fichiers déjà sur HDFS
+        try:
+            files_in_hdfs = CLIENT_HDFS.list(HDFS_BASE_DIR)
+        except Exception as e:
+            print(f"AVERTISSEMENT : Impossible de lister HDFS ({e}). On suppose que tout est à scraper.")
+            files_in_hdfs = []
 
-        remaining: list[str] = []
-        for number in all_numbers:
-            html_path = os.path.join(html_dir, f"{number}.html")
-            if not os.path.exists(html_path):
-                remaining.append(number)
+        # On garde juste le numéro, sans le '.html'
+        existing_numbers_in_hdfs = {f.replace('.html', '') for f in files_in_hdfs}
 
-        # On ne garde que max_companies entreprises pour ce run
-        selected = remaining[:max_companies]
+        # 3. Calculer la différence
+        remaining_to_scrape = list(all_numbers_in_csv - existing_numbers_in_hdfs)
+        
+        # 4. Limiter au maximum pour ce run
+        to_scrape_this_run = remaining_to_scrape[:max_companies]
 
-        print(f"➡️ {len(selected)} entreprise(s) à scraper sur ce run (max={max_companies}).")
-        if remaining:
-            print(f"Encore {len(remaining)} entreprise(s) sans HTML au total.")
+        print(f"➡️ {len(to_scrape_this_run)} entreprise(s) à scraper sur ce run (max={max_companies}).")
+        if not to_scrape_this_run:
+            print("Toutes les entreprises semblent déjà scrapées sur HDFS. ✔️")
         else:
-            print("Tout est déjà scrapé ✔️")
-
-        return selected
+            print(f"Entreprises sélectionnées : {to_scrape_this_run}")
+        return to_scrape_this_run
 
     @task(
         task_id="scrape_one_enterprise",
-        # 👉 si plus tard tu ajoutes un pool "scraping_pool", tu pourras mettre: pool="scraping_pool"
+        retries=2, 
+        pool="scraping_pool",
     )
-    def _scrape_one(number: str):
+    def _scrape_one(number: str, proxy: str):
         """
         Tâche Airflow pour UNE entreprise.
-        Si ça plante, seule cette task est en échec.
         """
-        print(f"Scraping entreprise: {number}")
-        download_html(number)
+        try:
+            print(f"Scraping entreprise: {number} avec proxy {proxy}")
+            download_html(number, proxy=proxy)
+        except Exception as e:
+            print(f"Échec du scraping pour {number} avec proxy {proxy}. Erreur: {e}")
+            raise 
 
-    # 1) On lit la liste des prochaines entreprises à scraper (0 à 20)
-    numbers_list = _read_next_enterprises()
+    proxy_list = _get_available_proxies()
+    numbers_list = _read_next_enterprises(max_companies=MAX_COMPANIES_PER_RUN)
 
-    # 2) On crée dynamiquement une tâche par numéro
-    #    → 1 entreprise = 1 task = 1 log, 1 statut
-    _scrape_one.expand(number=numbers_list)
+    @task
+    def map_arguments(numbers, proxies):
+        import itertools
+        
+        if not numbers:
+            print("Aucune entreprise à scraper.")
+            return [] # Doit retourner une liste vide pour que le expand ne plante pas
+        
+        if not proxies:
+            print("Aucun proxy disponible. Scraping sans proxy.")
+            proxies = [None] * len(numbers)
 
+        # On crée un cycle sur la liste des proxies si on a plus d'entreprises que de proxies
+        proxy_cycle = itertools.cycle(proxies)
+        
+        return [{"number": num, "proxy": next(proxy_cycle)} for num in numbers]
 
-scrape_daily_kbo_dynamic_dag = scrape_daily_kbo_dynamic_dag()
+    mapped_args = map_arguments(numbers_list, proxy_list)
+    
+    # On vérifie que mapped_args n'est pas vide avant de lancer expand_kwargs
+    if mapped_args:
+        _scrape_one.expand_kwargs(mapped_args)
+
+scrape_daily_kbo_dynamic_dag()
