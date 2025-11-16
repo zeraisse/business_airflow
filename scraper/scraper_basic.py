@@ -1,7 +1,11 @@
 import os
 import requests
+from hdfs import InsecureClient
 
 BASE_URL = "https://kbopub.economie.fgov.be/kbopub/toonondernemingps.html?lang=fr&ondernemingsnummer="
+
+HDFS_BASE_DIR = "/kbo/html"
+CLIENT_HDFS = InsecureClient('http://namenode:9870', user='airflow')
 
 def build_kbo_url(number: str) -> str:
     """
@@ -12,8 +16,8 @@ def build_kbo_url(number: str) -> str:
 def download_html(number: str, proxy: str | None = None) -> None:
     """
     Télécharge la page HTML pour un numéro d'entreprise
-    et la sauvegarde dans data/html/<numero>.html
-    Utilise un proxy si fourni.
+    et la sauvegarde dans HDFS kbo/html/<numero>.html  <-- On garde le docstring de 'main'
+    Utilise un proxy si fourni.                     <-- On garde ce commentaire de 'anas'
     """
     url = build_kbo_url(number)
     proxy_info = f"via proxy {proxy}" if proxy else "sans proxy"
@@ -22,7 +26,6 @@ def download_html(number: str, proxy: str | None = None) -> None:
     proxies = {"http": proxy, "https": proxy} if proxy else None
 
     try:
-        # Utilisation du proxy dans la requête
         response = requests.get(url, timeout=15, proxies=proxies)
     except Exception as e:
         print(f"❌ Erreur de requête pour {number} : {e}")
@@ -32,17 +35,18 @@ def download_html(number: str, proxy: str | None = None) -> None:
         print(f"❌ Erreur HTTP {response.status_code} pour {number}")
         return
 
-    # S'assurer que le dossier existe
-    os.makedirs(os.path.join("data", "html"), exist_ok=True)
+    # 4.logique d'écriture HDFS
 
-    filepath = os.path.join("data", "html", f"{number}.html")
+    hdfs_filepath = f"{HDFS_BASE_DIR}/{number}.html"
 
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(response.text)
-
-    print(f"✅ Fichier sauvegardé : {filepath}")
+    try:
+        with CLIENT_HDFS.write(hdfs_filepath, encoding="utf-8", overwrite=True) as writer:
+            writer.write(response.text)
+        
+        print(f"✅ Fichier sauvegardé dans HDFS : {hdfs_filepath}")
+    except Exception as e:
+        print(f"❌ Erreur lors de l'écriture HDFS pour {hdfs_filepath} : {e}")
 
 if __name__ == "__main__":
-    # Tu peux changer ce numéro si tu veux
-    numero_test = "0203430576"
-    download_html(numero_test)
+    print("Ce script doit être lancé via Airflow pour accéder à HDFS.")
+    pass
