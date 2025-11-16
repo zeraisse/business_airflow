@@ -16,7 +16,7 @@ docker compose exec namenode bash
 Si la config docker ne parviens pas a créer la connexion entre Airflow et MongoDb
 Il faut le faire manuellement ici 
 Dans Airflow > Admin > Connections > Add Connection
-Y indiqué les information de la base de donnée
+Y indiquer les informations de la base de données
 ```
 
 # Commande verification BDD
@@ -34,5 +34,6 @@ docker compose exec {IMAGENAME} mongosh -u {USER} -p {PASSWORD} --authentication
 ```text
 UI :  http://localhost:3000
 API : http://localhost:5001/api/companies
+HDFS UI : http://localhost:9870/
 ```
 ❤️
