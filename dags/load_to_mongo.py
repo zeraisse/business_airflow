@@ -14,7 +14,7 @@ MONGO_COLLECTION = "companies"
 @dag(
     dag_id="kbo_load_mongo_from_hdfs",
     start_date=datetime(2025, 1, 1),
-    schedule=None,
+    schedule="30 7 * * *", 
     catchup=False,
     tags=["kbo", "mongo", "load"]
 )

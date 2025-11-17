@@ -34,7 +34,7 @@ default_args = {
     dag_id="scrape_daily_kbo_dynamic",
     description="Scraping KBO avec tâches dynamiques (plusieurs entreprises par run, 1 entreprise = 1 task)",
     start_date=datetime(2025, 11, 13),
-    schedule="* * * * *",
+    schedule="0 6 * * *",
     catchup=False,
     default_args=default_args,
     tags=["kbo", "scraping", "dynamic"],
